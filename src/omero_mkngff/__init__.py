@@ -80,7 +80,7 @@ $BODY$
 
 TEMPLATE = """
 begin;
-    select new_fileset(
+    select mkngff_fileset(
       {OLD_FILESET},
       '{UUID}',
       '{REPO}',
@@ -88,8 +88,7 @@ begin;
       array[
 {ROWS}
       ]::text[][]
-    )
-);
+    );
 commit;
 """
 
@@ -114,7 +113,7 @@ class MkngffControl(BaseControl):
         sql.set_defaults(func=self.sql)
 
     def setup(self, args: Namespace) -> None:
-        print(SETUP)
+        self.ctx.out(SETUP)
 
     def sql(self, args: Namespace) -> None:
         conn = self.ctx.conn(args)  # noqa
@@ -133,7 +132,7 @@ class MkngffControl(BaseControl):
             prefix = prefix[:-1]  # Drop ending "/"
 
         prefix_path, prefix_name = prefix.rsplit("/", 1)
-        print(
+        self.ctx.err(
             f"Found prefix {prefix_path} // {prefix_name} for fileset {args.fileset_id}"
         )
 
@@ -171,7 +170,7 @@ class MkngffControl(BaseControl):
                 )
             )
 
-        print(
+        self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
                 PREFIX=f"{prefix_path}/{prefix_name}_converted/{zarr_name}/",
