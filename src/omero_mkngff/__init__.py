@@ -104,6 +104,13 @@ BEGIN
           values (nextval('seq_filesetentry'), {DETAILS2},
                   new_fileset, new_file, i-1, 'unknown');
 
+      -- use the third file as the target for setId (assumed to be the first .zattrs)
+      if i = 1 then
+          update pixels set path = trim(trailing '/' from info[i][1]), name = info[i][2]
+            from (select id from image where image.fileset = old_fileset) as subquery
+           where pixels.image = subquery.id;
+      end if;
+
     end loop;
 
     update image set fileset = new_fileset where fileset = old_fileset;
