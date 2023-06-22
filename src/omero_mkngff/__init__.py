@@ -43,7 +43,6 @@ Examples:
 
 """
 
-
 SETUP = """
 
 CREATE OR REPLACE FUNCTION mkngff_fileset(
@@ -55,58 +54,69 @@ CREATE OR REPLACE FUNCTION mkngff_fileset(
   RETURNS integer AS
 $BODY$
 DECLARE
-   fs_id integer;
-   file_id integer;
-   ann_id integer;
+   new_event integer;
+   new_fileset integer;
+   new_file integer;
+   new_ann integer;
+   old_owner integer;
+   old_group integer;
+   old_perms integer;
+
 BEGIN
 
+    select _current_or_new_event() into new_event;
+
+    select
+        owner_id, group_id, permissions
+     into
+        old_owner, old_group, old_perms
+     from fileset where id = old_fileset;
+
     insert into fileset
-        (id, permissions, templateprefix, creation_id, group_id, owner_id, update_id)
+        (id, templateprefix, {DETAILS1})
         values
-        (nextval('seq_fileset'), -120, prefix, 497, 0, 0, 497)
-        returning id into fs_id;
+        (nextval('seq_fileset'), prefix, {DETAILS2})
+        returning id into new_fileset;
 
     insert into annotation
-        (id, permissions, creation_id, group_id, owner_id, update_id,
-          ns, longvalue, discriminator)
+        (id, {DETAILS1}, ns, longvalue, discriminator)
         values
-        (nextval('seq_annotation'), -120, 497, 0, 0, 497,
-          'mkngff', old_fileset, '/basic/num/long/')
-        returning id into ann_id;
+        (nextval('seq_annotation'), {DETAILS2},
+        'mkngff', old_fileset, '/basic/num/long/')
+        returning id into new_ann;
 
     insert into filesetannotationlink
-        (id, permissions, creation_id, group_id, owner_id, update_id,
-          parent, child)
+        (id, {DETAILS1}, parent, child)
         values
-        (nextval('seq_filesetannotationlink'), -120, 497, 0, 0, 497,
-          fs_id, ann_id);
+        (nextval('seq_filesetannotationlink'), {DETAILS2}, new_fileset, new_ann);
 
     for i in 1 .. array_upper(info, 1)
     loop
 
       insert into originalfile
-          (id, permissions, creation_id, owner_id, group_id, update_id
-            mimetype, repo, path, name)
-          values (nextval('seq_originalfile'), -120, 497, 0, 0, 500,
+          (id, {DETAILS1}, mimetype, repo, path, name)
+          values (nextval('seq_originalfile'), {DETAILS2},
             info[i][3], repo, info[i][1], uuid || info[i][2])
-          returning id into file_id;
+          returning id into new_file;
 
       insert into filesetentry
-          (id, permissions, creation_id, update_id, owner_id, group_id,
-            fileset, originalfile, fileset_index, clientpath)
-          values (nextval('seq_filesetentry'), -120, 497, 497, 0, 0,
-            fs_id, file_id, i-1, 'unknown');
+          (id, {DETAILS1}, fileset, originalfile, fileset_index, clientpath)
+          values (nextval('seq_filesetentry'), {DETAILS2},
+                  new_fileset, new_file, i-1, 'unknown');
 
     end loop;
 
-    update image set fileset = fs_id where fileset = old_fileset;
+    update image set fileset = new_fileset where fileset = old_fileset;
 
-    RETURN fs_id;
+    RETURN new_fileset;
 END;
 $BODY$
   LANGUAGE plpgsql VOLATILE;
 
-"""
+""".format(
+    DETAILS1="permissions, creation_id, group_id, owner_id, update_id",
+    DETAILS2="old_perms, new_event, old_group, old_owner, new_event",
+)
 
 TEMPLATE = """
 begin;
