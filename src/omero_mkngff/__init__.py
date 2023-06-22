@@ -20,8 +20,9 @@
 
 from argparse import Namespace
 from pathlib import Path
+from typing import Generator, Tuple
 
-import omero.all
+import omero.all  # noqa
 from omero.cli import BaseControl, Parser
 from omero.sys import ParametersI
 
@@ -45,27 +46,56 @@ Examples:
 
 SETUP = """
 
-CREATE OR REPLACE FUNCTION mkngff_fileset(old_fileset bigint, uuid character varying, repo character varying, prefix character varying, info text[][])
+CREATE OR REPLACE FUNCTION mkngff_fileset(
+    old_fileset bigint,
+    uuid character varying,
+    repo character varying,
+    prefix character varying,
+    info text[][])
   RETURNS integer AS
 $BODY$
 DECLARE
    fs_id integer;
    file_id integer;
+   ann_id integer;
 BEGIN
 
-    insert into fileset (id, permissions, templateprefix, creation_id, group_id, owner_id, update_id)
-                 values (nextval('seq_fileset'), -120, prefix, 497, 0, 0, 497)
-                 returning id into fs_id;
+    insert into fileset
+        (id, permissions, templateprefix, creation_id, group_id, owner_id, update_id)
+        values
+        (nextval('seq_fileset'), -120, prefix, 497, 0, 0, 497)
+        returning id into fs_id;
+
+    insert into annotation
+        (id, permissions, creation_id, group_id, owner_id, update_id,
+          ns, longvalue, discriminator)
+        values
+        (nextval('seq_annotation'), -120, 497, 0, 0, 497,
+          'mkngff', old_fileset, '/basic/num/long/')
+        returning id into ann_id;
+
+    insert into filesetannotationlink
+        (id, permissions, creation_id, group_id, owner_id, update_id,
+          parent, child)
+        values
+        (nextval('seq_filesetannotationlink'), -120, 497, 0, 0, 497,
+          fs_id, ann_id);
 
     for i in 1 .. array_upper(info, 1)
     loop
 
-      insert into originalfile (id, permissions, mimetype, repo, path, name, creation_id, owner_id, group_id, update_id)
-                    values (nextval('seq_originalfile'), -120, info[i][3], repo, info[i][1], uuid || info[i][2], 497, 0, 0, 500)
-                    returning id into file_id;
+      insert into originalfile
+          (id, permissions, creation_id, owner_id, group_id, update_id
+            mimetype, repo, path, name)
+          values (nextval('seq_originalfile'), -120, 497, 0, 0, 500,
+            info[i][3], repo, info[i][1], uuid || info[i][2])
+          returning id into file_id;
 
-      insert into filesetentry (id, permissions, clientpath, creation_id, update_id, owner_id, group_id, fileset, originalfile, fileset_index)
-                    values (nextval('seq_filesetentry'), -120, 'unknown', 497, 497, 0, 0, fs_id, file_id, i-1);
+      insert into filesetentry
+          (id, permissions, creation_id, update_id, owner_id, group_id,
+            fileset, originalfile, fileset_index, clientpath)
+          values (nextval('seq_filesetentry'), -120, 497, 497, 0, 0,
+            fs_id, file_id, i-1, 'unknown');
 
     end loop;
 
@@ -119,7 +149,10 @@ class MkngffControl(BaseControl):
         conn = self.ctx.conn(args)  # noqa
         q = conn.sf.getQueryService()
         rv = q.findAllByQuery(
-            "select f from Fileset f join fetch f.usedFiles fe join fetch fe.originalFile ofile where f.id = :id",
+            (
+                "select f from Fileset f join fetch f.usedFiles fe "
+                "join fetch fe.originalFile ofile where f.id = :id"
+            ),
             ParametersI().addId(args.fileset_id),
         )
         if len(rv) != 1:
@@ -180,7 +213,7 @@ class MkngffControl(BaseControl):
             )
         )
 
-    def walk(self, path: Path):
+    def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
             if not p.is_dir():
                 yield (p.parent, p.name, "application/octet-stream")
@@ -192,7 +225,7 @@ class MkngffControl(BaseControl):
                     # Chunk directory
                     continue
 
-    def get_uuid(self, args: Namespace):
+    def get_uuid(self, args: Namespace) -> str:
         from omero.grid import ManagedRepositoryPrx as MRepo
 
         client = self.ctx.conn(args)
@@ -202,9 +235,10 @@ class MkngffControl(BaseControl):
 
         for idx, pair in enumerate(repos):
             desc, prx = pair
-            path = "".join([desc.path.val, desc.name.val])
             is_mrepo = MRepo.checkedCast(prx)
             if is_mrepo:
                 return desc.hash.val
 
-        self.ctx.die(402, f"Failed to find managed repository (count={len(repos)})")
+        raise self.ctx.die(
+            402, f"Failed to find managed repository (count={len(repos)})"
+        )
