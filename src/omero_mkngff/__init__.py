@@ -220,12 +220,8 @@ class MkngffControl(BaseControl):
             if not p.is_dir():
                 yield (p.parent, p.name, "application/octet-stream")
             else:
-                if (p / ".zarray").exists() or (p / ".zgroup").exists():
-                    yield (p.parent, p.name, "Directory")
-                    yield from self.walk(p)
-                else:
-                    # Chunk directory
-                    continue
+                yield (p.parent, p.name, "Directory")
+                yield from self.walk(p)
 
     def get_uuid(self, args: Namespace) -> str:
         from omero.grid import ManagedRepositoryPrx as MRepo
