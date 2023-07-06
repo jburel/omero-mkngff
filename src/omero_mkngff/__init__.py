@@ -196,20 +196,6 @@ class MkngffControl(BaseControl):
             zarr_name = symlink_path.name
 
         rows = []
-        rows.append(
-            ROW.format(
-                PATH=f"{prefix_path}/",
-                NAME=f"{prefix_name}_converted",
-                MIME="Directory",
-            )
-        )
-        rows.append(
-            ROW.format(
-                PATH=f"{prefix_path}/{prefix_name}_converted/",
-                NAME=zarr_name,
-                MIME="Directory",
-            )
-        )
         for row_path, row_name, row_mime in self.walk(symlink_path):
             rows.append(
                 ROW.format(
@@ -222,7 +208,7 @@ class MkngffControl(BaseControl):
         self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
-                PREFIX=f"{prefix_path}/{prefix_name}_converted/{zarr_name}/",
+                PREFIX=f"{prefix_path}/{prefix_name}_converted/",
                 ROWS=",\n".join(rows),
                 REPO=self.get_uuid(args),
                 UUID=args.secret,
