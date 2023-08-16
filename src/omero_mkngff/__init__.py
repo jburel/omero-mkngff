@@ -204,7 +204,8 @@ class MkngffControl(BaseControl):
             self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
             if not os.path.exists(prefix_dir):
                  self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
-            symlink_dir = os.path.join(f"{prefix_dir}_converted", symlink_path.parent)
+            # symlink_dir = os.path.join(f"{prefix_dir}_converted", symlink_path.parent)
+            symlink_dir = f"{prefix_dir}_converted/{symlink_path.parent}"
             self.ctx.err(f"Creating dir at {symlink_dir}")
             os.makedirs(symlink_dir, exist_ok=True)
 
