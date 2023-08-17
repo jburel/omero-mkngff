@@ -199,7 +199,6 @@ class MkngffControl(BaseControl):
 
         # create *_converted/path/to/zarr directory containing symlink to data
         if args.symlink_repo:
-            self.ctx.err(f"Using args.symlink_repo: {args.symlink_repo}")
             prefix_dir = os.path.join(args.symlink_repo, prefix)
             self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
             if not os.path.exists(prefix_dir):
@@ -208,7 +207,7 @@ class MkngffControl(BaseControl):
             if symlink_container.startswith("/"):
                 symlink_container = symlink_container[1:]  # remove "/" from start
             symlink_dir = os.path.join(f"{prefix_dir}_converted", symlink_container)
-            self.ctx.err(f"Creating dir at {symlink_dir} symlink_container: {symlink_container}")
+            self.ctx.err(f"Creating dir at {symlink_dir}")
             os.makedirs(symlink_dir, exist_ok=True)
 
             symlink_source = os.path.join(symlink_dir, symlink_path.name)
