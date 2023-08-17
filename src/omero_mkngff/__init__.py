@@ -219,6 +219,8 @@ class MkngffControl(BaseControl):
 
         rows = []
         for row_path, row_name, row_mime in self.walk(symlink_path):
+            if str(row_path).startswith("/"):
+                row_path = str(row_path)[1:]  # remove "/" from start
             rows.append(
                 ROW.format(
                     PATH=f"{prefix_path}/{prefix_name}_converted/{row_path}/",
