@@ -27,7 +27,7 @@ import omero.all  # noqa
 from omero.cli import BaseControl, Parser
 from omero.sys import ParametersI
 
-SUFFIX = "converted"
+SUFFIX = "mkngff"
 HELP = """Plugin to swap OMERO filesets with NGFF
 
 CLI plugin used to swap an existing OMERO fileset with
