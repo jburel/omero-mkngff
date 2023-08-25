@@ -207,7 +207,7 @@ class MkngffControl(BaseControl):
             symlink_container = f"{symlink_path.parent}"
             if symlink_container.startswith("/"):
                 symlink_container = symlink_container[1:]  # remove "/" from start
-            symlink_dir = os.path.join(f"{prefix_dir}_{SUFFIX}", symlink_container)
+            symlink_dir = f"{prefix_dir}_{SUFFIX}"
             self.ctx.err(f"Creating dir at {symlink_dir}")
             os.makedirs(symlink_dir, exist_ok=True)
 
@@ -220,6 +220,8 @@ class MkngffControl(BaseControl):
 
         rows = []
         for row_path, row_name, row_mime in self.walk(symlink_path):
+            # remove common path to shorten
+            row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
                 row_path = str(row_path)[1:]  # remove "/" from start
             rows.append(
