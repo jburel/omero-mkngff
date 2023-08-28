@@ -18,6 +18,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+import os
 from argparse import Namespace
 from pathlib import Path
 from typing import Generator, Tuple
@@ -154,6 +155,11 @@ class MkngffControl(BaseControl):
             "--secret", help="DB UUID for protecting SQL statements", default="TBD"
         )
         sql.add_argument("--zarr_name", help="Nicer name for zarr directory if desired")
+        sql.add_argument(
+            "--symlink_repo",
+            help=("Create symlinks from Fileset to symlink_target using"
+                  "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository")
+        )
         sql.add_argument("fileset_id", type=int)
         sql.add_argument("symlink_target")
         sql.set_defaults(func=self.sql)
@@ -191,12 +197,30 @@ class MkngffControl(BaseControl):
             self.ctx.die(401, f"Symlink target does not exist: {args.symlink_target}")
             return
 
-        zarr_name = args.zarr_name
-        if not zarr_name:
-            zarr_name = symlink_path.name
+        # create *_converted/path/to/zarr directory containing symlink to data
+        if args.symlink_repo:
+            prefix_dir = os.path.join(args.symlink_repo, prefix)
+            self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
+            if not os.path.exists(prefix_dir):
+                 self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+            symlink_container = f"{symlink_path.parent}"
+            if symlink_container.startswith("/"):
+                symlink_container = symlink_container[1:]  # remove "/" from start
+            symlink_dir = os.path.join(f"{prefix_dir}_converted", symlink_container)
+            self.ctx.err(f"Creating dir at {symlink_dir}")
+            os.makedirs(symlink_dir, exist_ok=True)
+
+            symlink_source = os.path.join(symlink_dir, symlink_path.name)
+            target_is_directory = os.path.isdir(args.symlink_target)
+            self.ctx.err(
+                f"Creating symlink {symlink_source} -> {args.symlink_target}"
+            )
+            os.symlink(args.symlink_target, symlink_source, target_is_directory)
 
         rows = []
         for row_path, row_name, row_mime in self.walk(symlink_path):
+            if str(row_path).startswith("/"):
+                row_path = str(row_path)[1:]  # remove "/" from start
             rows.append(
                 ROW.format(
                     PATH=f"{prefix_path}/{prefix_name}_converted/{row_path}/",
