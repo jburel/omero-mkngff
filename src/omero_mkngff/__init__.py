@@ -232,6 +232,11 @@ class MkngffControl(BaseControl):
                 )
             )
 
+        # Add a command to update the Pixels table with path/name using old Fileset ID *before* new Fileset is created
+        fpath = setid_target[0]
+        fname = setid_target[1]
+        self.ctx.out(f"UPDATE pixels SET name = '{fname}', path = '{fpath}' where image in (select id from Image where fileset = {args.fileset_id});")
+
         self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
@@ -241,11 +246,6 @@ class MkngffControl(BaseControl):
                 UUID=args.secret,
             )
         )
-
-        # Add a command to update the Pixels table with path/name
-        fpath = setid_target[0]
-        fname = setid_target[1]
-        self.ctx.out(f"UPDATE pixels SET name = '{fname}', path = '{fpath}' where image in (select id from Image where fileset ={args.fileset_id});")
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
