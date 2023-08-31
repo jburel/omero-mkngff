@@ -106,12 +106,6 @@ BEGIN
           values (nextval('seq_filesetentry'), {DETAILS2},
                   new_fileset, new_file, i-1, 'unknown');
 
-      if info[i][2] = 'METADATA.ome.xml' then
-          update pixels set path = trim(trailing '/' from info[i][1]), name = info[i][2]
-            from (select id from image where image.fileset = old_fileset) as subquery
-           where pixels.image = subquery.id;
-      end if;
-
     end loop;
 
     update image set fileset = new_fileset where fileset = old_fileset;
@@ -219,14 +213,20 @@ class MkngffControl(BaseControl):
             os.symlink(args.symlink_target, symlink_source, target_is_directory)
 
         rows = []
+        # Need a file to set path/name on pixels table BioFormats uses for setId()
+        setid_target = None
         for row_path, row_name, row_mime in self.walk(symlink_path):
             # remove common path to shorten
             row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
                 row_path = str(row_path)[1:]  # remove "/" from start
+            row_full_path = f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}"
+            # pick the first .zattrs file we find, then update to ome.xml if we find it
+            if setid_target is None and row_name == ".zattrs" or row_name == "METADATA.ome.xml":
+                setid_target = [row_full_path, row_name]
             rows.append(
                 ROW.format(
-                    PATH=f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}/",
+                    PATH=f"{row_full_path}/",
                     NAME=row_name,
                     MIME=row_mime,
                 )
@@ -241,6 +241,11 @@ class MkngffControl(BaseControl):
                 UUID=args.secret,
             )
         )
+
+        # Add a command to update the Pixels table with path/name
+        fpath = setid_target[0]
+        fname = setid_target[1]
+        self.ctx.out(f"UPDATE pixels SET name = '{fname}', path = '{fpath}' where image in (select id from Image where fileset ={args.fileset_id});")
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
