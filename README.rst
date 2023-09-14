@@ -10,6 +10,31 @@ omero-mkngff
 Plugin to swap OMERO filesets with NGFF
 
 
+Usage
+=====
+
+To create sql containing required functions and run it:
+
+::
+
+    $ omero mkngff setup > setup.sql
+    $ psql -U omero -d idr -h $DBHOST -f setup.sql
+
+To generate sql and create the symlinks from the ManagedRepository to the NGFF data for a
+specified Fileset ID:
+
+::
+
+    $ omero mkngff sql --symlink_repo /OMERO/ManagedRepository --secret=secret 1234 /path/to/fileset.zarr > myNgff.sql
+    $ psql -U omero -d idr -h $DBHOST -f myNgff.sql
+
+To ONLY perform the symlink creation:
+
+::
+
+    $ omero mkngff symlink /OMERO/ManagedRepository 1234 /path/to/fileset.zarr
+
+
 Requirements
 ============
 
