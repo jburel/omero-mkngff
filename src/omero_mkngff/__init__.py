@@ -159,27 +159,21 @@ class MkngffControl(BaseControl):
         sql.add_argument("symlink_target")
         sql.set_defaults(func=self.sql)
 
+        # symlink command to ONLY create symlinks - useful if you have previously generated
+        # the corresponding sql for a Fileset
+        symlink = sub.add_parser("symlink", help="Create managed repo symlink")
+        symlink.add_argument("symlink_repo", help=(
+            "Create symlinks from Fileset to symlink_target using"
+            "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository"))
+        symlink.add_argument("fileset_id", type=int)
+        symlink.add_argument("symlink_target")
+        symlink.set_defaults(func=self.symlink)
+
     def setup(self, args: Namespace) -> None:
         self.ctx.out(SETUP)
 
     def sql(self, args: Namespace) -> None:
-        conn = self.ctx.conn(args)  # noqa
-        q = conn.sf.getQueryService()
-        rv = q.findAllByQuery(
-            (
-                "select f from Fileset f join fetch f.usedFiles fe "
-                "join fetch fe.originalFile ofile where f.id = :id"
-            ),
-            ParametersI().addId(args.fileset_id),
-        )
-        if len(rv) != 1:
-            self.ctx.die(400, f"Found wrong number of filesets: {len(rv)}")
-            return
-
-        prefix = rv[0].templatePrefix.val
-
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]  # Drop ending "/"
+        prefix = self.get_prefix(args)
 
         prefix_path, prefix_name = prefix.rsplit("/", 1)
         self.ctx.err(
@@ -194,23 +188,7 @@ class MkngffControl(BaseControl):
 
         # create *_SUFFIX/path/to/zarr directory containing symlink to data
         if args.symlink_repo:
-            prefix_dir = os.path.join(args.symlink_repo, prefix)
-            self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
-            if not os.path.exists(prefix_dir):
-                 self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
-            symlink_container = f"{symlink_path.parent}"
-            if symlink_container.startswith("/"):
-                symlink_container = symlink_container[1:]  # remove "/" from start
-            symlink_dir = f"{prefix_dir}_{SUFFIX}"
-            self.ctx.err(f"Creating dir at {symlink_dir}")
-            os.makedirs(symlink_dir, exist_ok=True)
-
-            symlink_source = os.path.join(symlink_dir, symlink_path.name)
-            target_is_directory = os.path.isdir(args.symlink_target)
-            self.ctx.err(
-                f"Creating symlink {symlink_source} -> {args.symlink_target}"
-            )
-            os.symlink(args.symlink_target, symlink_source, target_is_directory)
+            self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
 
         rows = []
         # Need a file to set path/name on pixels table BioFormats uses for setId()
@@ -246,6 +224,53 @@ class MkngffControl(BaseControl):
                 UUID=args.secret,
             )
         )
+
+    def symlink(self, args: Namespace) -> None:
+        prefix = self.get_prefix(args)
+        symlink_path = Path(args.symlink_target)
+        self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+
+    def get_prefix(self, args):
+
+        conn = self.ctx.conn(args)  # noqa
+        q = conn.sf.getQueryService()
+        rv = q.findAllByQuery(
+            (
+                "select f from Fileset f join fetch f.usedFiles fe "
+                "join fetch fe.originalFile ofile where f.id = :id"
+            ),
+            ParametersI().addId(args.fileset_id),
+        )
+        if len(rv) != 1:
+            self.ctx.die(400, f"Found wrong number of filesets: {len(rv)}")
+            return
+
+        prefix = rv[0].templatePrefix.val
+
+        if prefix.endswith("/"):
+            prefix = prefix[:-1]  # Drop ending "/"
+
+        return prefix
+
+    def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
+
+        prefix_dir = os.path.join(symlink_repo, prefix)
+        self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
+        if not os.path.exists(prefix_dir):
+                self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+        symlink_container = f"{symlink_path.parent}"
+        if symlink_container.startswith("/"):
+            symlink_container = symlink_container[1:]  # remove "/" from start
+        symlink_dir = f"{prefix_dir}_{SUFFIX}"
+        self.ctx.err(f"Creating dir at {symlink_dir}")
+        os.makedirs(symlink_dir, exist_ok=True)
+
+        symlink_source = os.path.join(symlink_dir, symlink_path.name)
+        target_is_directory = os.path.isdir(symlink_target)
+        self.ctx.err(
+            f"Creating symlink {symlink_source} -> {symlink_target}"
+        )
+        os.symlink(symlink_target, symlink_source, target_is_directory)
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
