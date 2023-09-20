@@ -257,7 +257,7 @@ class MkngffControl(BaseControl):
         prefix_dir = os.path.join(symlink_repo, prefix)
         self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
         if not os.path.exists(prefix_dir):
-                self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+            self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
         symlink_container = f"{symlink_path.parent}"
         if symlink_container.startswith("/"):
             symlink_container = symlink_container[1:]  # remove "/" from start
@@ -270,7 +270,9 @@ class MkngffControl(BaseControl):
         self.ctx.err(
             f"Creating symlink {symlink_source} -> {symlink_target}"
         )
-        os.symlink(symlink_target, symlink_source, target_is_directory)
+        # ignore if symlink exists
+        if not os.path.exists(symlink_source):
+            os.symlink(symlink_target, symlink_source, target_is_directory)
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
