@@ -277,9 +277,12 @@ class MkngffControl(BaseControl):
             if not p.is_dir():
                 yield (p.parent, p.name, "application/octet-stream")
             else:
-                if (p / ".zarray").exists() or (p / ".zgroup").exists():
+                is_array = (p / ".zarray").exists()
+                if is_array or (p / ".zgroup").exists():
                     yield (p.parent, p.name, "Directory")
-                    yield from self.walk(p)
+                    # Don't try to walk zarray - will only contain chunks!
+                    if not is_array:
+                        yield from self.walk(p)
                 else:
                     # Chunk directory
                     continue
