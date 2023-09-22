@@ -174,7 +174,7 @@ class MkngffControl(BaseControl):
 
     def sql(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
-        self.ctx.err(f"Found prefix {prefix} for fileset {args.fileset_id}")
+        self.ctx.err(f"Found prefix {prefix} for fileset: {args.fileset_id}")
 
         symlink_path = Path(args.symlink_target)
 
@@ -288,11 +288,13 @@ class MkngffControl(BaseControl):
                 is_array = (p / ".zarray").exists()
                 if is_array or (p / ".zgroup").exists():
                     yield (p.parent, p.name, "Directory")
-                    # Don't try to walk zarray - will only contain chunks!
-                    if not is_array:
+                    # If array, don't recursively check sub-dirs
+                    if is_array:
+                        yield (p, ".zarray", "application/octet-stream")
+                    else:
                         yield from self.walk(p)
                 else:
-                    # Chunk directory
+                    # Non-zarr directory
                     continue
 
     def get_uuid(self, args: Namespace) -> str:
