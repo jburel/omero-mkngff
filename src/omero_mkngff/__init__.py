@@ -147,7 +147,7 @@ class MkngffControl(BaseControl):
 
         sql = sub.add_parser("sql", help="generate SQL statement")
         sql.add_argument(
-            "--secret", help="DB UUID for protecting SQL statements", default="TBD"
+            "--secret", help="DB UUID for protecting SQL statements", default="SECRETUUID"
         )
         sql.add_argument("--zarr_name", help="Nicer name for zarr directory if desired")
         sql.add_argument(
@@ -174,7 +174,7 @@ class MkngffControl(BaseControl):
 
     def sql(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
-        self.ctx.err(f"Found prefix {prefix} for fileset: {args.fileset_id}")
+        self.ctx.err(f"Found prefix: {prefix} for fileset: {args.fileset_id}")
 
         symlink_path = Path(args.symlink_target)
 
