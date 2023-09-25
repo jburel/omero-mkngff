@@ -147,7 +147,7 @@ class MkngffControl(BaseControl):
 
         sql = sub.add_parser("sql", help="generate SQL statement")
         sql.add_argument(
-            "--secret", help="DB UUID for protecting SQL statements", default="TBD"
+            "--secret", help="DB UUID for protecting SQL statements", default="SECRETUUID"
         )
         sql.add_argument("--zarr_name", help="Nicer name for zarr directory if desired")
         sql.add_argument(
@@ -174,11 +174,7 @@ class MkngffControl(BaseControl):
 
     def sql(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
-
-        prefix_path, prefix_name = prefix.rsplit("/", 1)
-        self.ctx.err(
-            f"Found prefix {prefix_path} // {prefix_name} for fileset {args.fileset_id}"
-        )
+        self.ctx.err(f"Found prefix: {prefix} for fileset: {args.fileset_id}")
 
         symlink_path = Path(args.symlink_target)
 
@@ -186,9 +182,12 @@ class MkngffControl(BaseControl):
             self.ctx.die(401, f"Symlink target does not exist: {args.symlink_target}")
             return
 
-        # create *_SUFFIX/path/to/zarr directory containing symlink to data
+        # If symlink dir exists, we assume that this fileset has been processed -> skip...
         if args.symlink_repo:
-            self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+            symlink_dir = self.get_symlink_dir(args.symlink_repo, prefix, symlink_path)
+            if os.path.exists(symlink_dir):
+                self.ctx.err(f"Symlink dir exists at {symlink_dir} - skipping sql output")
+                return
 
         rows = []
         # Need a file to set path/name on pixels table BioFormats uses for setId()
@@ -198,7 +197,7 @@ class MkngffControl(BaseControl):
             row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
                 row_path = str(row_path)[1:]  # remove "/" from start
-            row_full_path = f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}"
+            row_full_path = f"{prefix}_{SUFFIX}/{row_path}"
             # pick the first .zattrs file we find, then update to ome.xml if we find it
             if setid_target is None and row_name == ".zattrs" or row_name == "METADATA.ome.xml":
                 setid_target = [row_full_path, row_name]
@@ -218,12 +217,16 @@ class MkngffControl(BaseControl):
         self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
-                PREFIX=f"{prefix_path}/{prefix_name}_{SUFFIX}/",
+                PREFIX=f"{prefix}_{SUFFIX}/",
                 ROWS=",\n".join(rows),
                 REPO=self.get_uuid(args),
                 UUID=args.secret,
             )
         )
+
+        # Finally create *_SUFFIX/ directory containing symlink to data
+        if args.symlink_repo:
+            self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
 
     def symlink(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
@@ -252,16 +255,19 @@ class MkngffControl(BaseControl):
 
         return prefix
 
-    def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
-
+    def get_symlink_dir(self, symlink_repo, prefix, symlink_path):
         prefix_dir = os.path.join(symlink_repo, prefix)
         self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
         if not os.path.exists(prefix_dir):
-                self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+            self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
         symlink_container = f"{symlink_path.parent}"
         if symlink_container.startswith("/"):
             symlink_container = symlink_container[1:]  # remove "/" from start
         symlink_dir = f"{prefix_dir}_{SUFFIX}"
+        return symlink_dir
+
+    def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
+        symlink_dir = self.get_symlink_dir(symlink_repo, prefix, symlink_path)
         self.ctx.err(f"Creating dir at {symlink_dir}")
         os.makedirs(symlink_dir, exist_ok=True)
 
@@ -270,18 +276,25 @@ class MkngffControl(BaseControl):
         self.ctx.err(
             f"Creating symlink {symlink_source} -> {symlink_target}"
         )
-        os.symlink(symlink_target, symlink_source, target_is_directory)
+        # ignore if symlink exists
+        if not os.path.exists(symlink_source):
+            os.symlink(symlink_target, symlink_source, target_is_directory)
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
             if not p.is_dir():
                 yield (p.parent, p.name, "application/octet-stream")
             else:
-                if (p / ".zarray").exists() or (p / ".zgroup").exists():
+                is_array = (p / ".zarray").exists()
+                if is_array or (p / ".zgroup").exists():
                     yield (p.parent, p.name, "Directory")
-                    yield from self.walk(p)
+                    # If array, don't recursively check sub-dirs
+                    if is_array:
+                        yield (p, ".zarray", "application/octet-stream")
+                    else:
+                        yield from self.walk(p)
                 else:
-                    # Chunk directory
+                    # Non-zarr directory
                     continue
 
     def get_uuid(self, args: Namespace) -> str:
