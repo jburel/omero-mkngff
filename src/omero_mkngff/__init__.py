@@ -27,6 +27,7 @@ import omero.all  # noqa
 from omero.cli import BaseControl, Parser
 from omero.sys import ParametersI
 
+SUFFIX = "mkngff"
 HELP = """Plugin to swap OMERO filesets with NGFF
 
 CLI plugin used to swap an existing OMERO fileset with
@@ -197,7 +198,7 @@ class MkngffControl(BaseControl):
             self.ctx.die(401, f"Symlink target does not exist: {args.symlink_target}")
             return
 
-        # create *_converted/path/to/zarr directory containing symlink to data
+        # create *_SUFFIX/path/to/zarr directory containing symlink to data
         if args.symlink_repo:
             prefix_dir = os.path.join(args.symlink_repo, prefix)
             self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
@@ -206,7 +207,7 @@ class MkngffControl(BaseControl):
             symlink_container = f"{symlink_path.parent}"
             if symlink_container.startswith("/"):
                 symlink_container = symlink_container[1:]  # remove "/" from start
-            symlink_dir = os.path.join(f"{prefix_dir}_converted", symlink_container)
+            symlink_dir = f"{prefix_dir}_{SUFFIX}"
             self.ctx.err(f"Creating dir at {symlink_dir}")
             os.makedirs(symlink_dir, exist_ok=True)
 
@@ -219,11 +220,13 @@ class MkngffControl(BaseControl):
 
         rows = []
         for row_path, row_name, row_mime in self.walk(symlink_path):
+            # remove common path to shorten
+            row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
                 row_path = str(row_path)[1:]  # remove "/" from start
             rows.append(
                 ROW.format(
-                    PATH=f"{prefix_path}/{prefix_name}_converted/{row_path}/",
+                    PATH=f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}/",
                     NAME=row_name,
                     MIME=row_mime,
                 )
@@ -232,7 +235,7 @@ class MkngffControl(BaseControl):
         self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
-                PREFIX=f"{prefix_path}/{prefix_name}_converted/",
+                PREFIX=f"{prefix_path}/{prefix_name}_{SUFFIX}/",
                 ROWS=",\n".join(rows),
                 REPO=self.get_uuid(args),
                 UUID=args.secret,
