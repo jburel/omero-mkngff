@@ -106,12 +106,6 @@ BEGIN
           values (nextval('seq_filesetentry'), {DETAILS2},
                   new_fileset, new_file, i-1, 'unknown');
 
-      if info[i][2] = 'METADATA.ome.xml' then
-          update pixels set path = trim(trailing '/' from info[i][1]), name = info[i][2]
-            from (select id from image where image.fileset = old_fileset) as subquery
-           where pixels.image = subquery.id;
-      end if;
-
     end loop;
 
     update image set fileset = new_fileset where fileset = old_fileset;
@@ -165,10 +159,79 @@ class MkngffControl(BaseControl):
         sql.add_argument("symlink_target")
         sql.set_defaults(func=self.sql)
 
+        # symlink command to ONLY create symlinks - useful if you have previously generated
+        # the corresponding sql for a Fileset
+        symlink = sub.add_parser("symlink", help="Create managed repo symlink")
+        symlink.add_argument("symlink_repo", help=(
+            "Create symlinks from Fileset to symlink_target using"
+            "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository"))
+        symlink.add_argument("fileset_id", type=int)
+        symlink.add_argument("symlink_target")
+        symlink.set_defaults(func=self.symlink)
+
     def setup(self, args: Namespace) -> None:
         self.ctx.out(SETUP)
 
     def sql(self, args: Namespace) -> None:
+        prefix = self.get_prefix(args)
+
+        prefix_path, prefix_name = prefix.rsplit("/", 1)
+        self.ctx.err(
+            f"Found prefix {prefix_path} // {prefix_name} for fileset {args.fileset_id}"
+        )
+
+        symlink_path = Path(args.symlink_target)
+
+        if not symlink_path.exists():
+            self.ctx.die(401, f"Symlink target does not exist: {args.symlink_target}")
+            return
+
+        # create *_SUFFIX/path/to/zarr directory containing symlink to data
+        if args.symlink_repo:
+            self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+
+        rows = []
+        # Need a file to set path/name on pixels table BioFormats uses for setId()
+        setid_target = None
+        for row_path, row_name, row_mime in self.walk(symlink_path):
+            # remove common path to shorten
+            row_path = str(row_path).replace(f"{symlink_path.parent}", "")
+            if str(row_path).startswith("/"):
+                row_path = str(row_path)[1:]  # remove "/" from start
+            row_full_path = f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}"
+            # pick the first .zattrs file we find, then update to ome.xml if we find it
+            if setid_target is None and row_name == ".zattrs" or row_name == "METADATA.ome.xml":
+                setid_target = [row_full_path, row_name]
+            rows.append(
+                ROW.format(
+                    PATH=f"{row_full_path}/",
+                    NAME=row_name,
+                    MIME=row_mime,
+                )
+            )
+
+        # Add a command to update the Pixels table with path/name using old Fileset ID *before* new Fileset is created
+        fpath = setid_target[0]
+        fname = setid_target[1]
+        self.ctx.out(f"UPDATE pixels SET name = '{fname}', path = '{fpath}' where image in (select id from Image where fileset = {args.fileset_id});")
+
+        self.ctx.out(
+            TEMPLATE.format(
+                OLD_FILESET=args.fileset_id,
+                PREFIX=f"{prefix_path}/{prefix_name}_{SUFFIX}/",
+                ROWS=",\n".join(rows),
+                REPO=self.get_uuid(args),
+                UUID=args.secret,
+            )
+        )
+
+    def symlink(self, args: Namespace) -> None:
+        prefix = self.get_prefix(args)
+        symlink_path = Path(args.symlink_target)
+        self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+
+    def get_prefix(self, args):
+
         conn = self.ctx.conn(args)  # noqa
         q = conn.sf.getQueryService()
         rv = q.findAllByQuery(
@@ -187,60 +250,27 @@ class MkngffControl(BaseControl):
         if prefix.endswith("/"):
             prefix = prefix[:-1]  # Drop ending "/"
 
-        prefix_path, prefix_name = prefix.rsplit("/", 1)
+        return prefix
+
+    def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
+
+        prefix_dir = os.path.join(symlink_repo, prefix)
+        self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
+        if not os.path.exists(prefix_dir):
+                self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+        symlink_container = f"{symlink_path.parent}"
+        if symlink_container.startswith("/"):
+            symlink_container = symlink_container[1:]  # remove "/" from start
+        symlink_dir = f"{prefix_dir}_{SUFFIX}"
+        self.ctx.err(f"Creating dir at {symlink_dir}")
+        os.makedirs(symlink_dir, exist_ok=True)
+
+        symlink_source = os.path.join(symlink_dir, symlink_path.name)
+        target_is_directory = os.path.isdir(symlink_target)
         self.ctx.err(
-            f"Found prefix {prefix_path} // {prefix_name} for fileset {args.fileset_id}"
+            f"Creating symlink {symlink_source} -> {symlink_target}"
         )
-
-        symlink_path = Path(args.symlink_target)
-
-        if not symlink_path.exists():
-            self.ctx.die(401, f"Symlink target does not exist: {args.symlink_target}")
-            return
-
-        # create *_SUFFIX/path/to/zarr directory containing symlink to data
-        if args.symlink_repo:
-            prefix_dir = os.path.join(args.symlink_repo, prefix)
-            self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
-            if not os.path.exists(prefix_dir):
-                 self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
-            symlink_container = f"{symlink_path.parent}"
-            if symlink_container.startswith("/"):
-                symlink_container = symlink_container[1:]  # remove "/" from start
-            symlink_dir = f"{prefix_dir}_{SUFFIX}"
-            self.ctx.err(f"Creating dir at {symlink_dir}")
-            os.makedirs(symlink_dir, exist_ok=True)
-
-            symlink_source = os.path.join(symlink_dir, symlink_path.name)
-            target_is_directory = os.path.isdir(args.symlink_target)
-            self.ctx.err(
-                f"Creating symlink {symlink_source} -> {args.symlink_target}"
-            )
-            os.symlink(args.symlink_target, symlink_source, target_is_directory)
-
-        rows = []
-        for row_path, row_name, row_mime in self.walk(symlink_path):
-            # remove common path to shorten
-            row_path = str(row_path).replace(f"{symlink_path.parent}", "")
-            if str(row_path).startswith("/"):
-                row_path = str(row_path)[1:]  # remove "/" from start
-            rows.append(
-                ROW.format(
-                    PATH=f"{prefix_path}/{prefix_name}_{SUFFIX}/{row_path}/",
-                    NAME=row_name,
-                    MIME=row_mime,
-                )
-            )
-
-        self.ctx.out(
-            TEMPLATE.format(
-                OLD_FILESET=args.fileset_id,
-                PREFIX=f"{prefix_path}/{prefix_name}_{SUFFIX}/",
-                ROWS=",\n".join(rows),
-                REPO=self.get_uuid(args),
-                UUID=args.secret,
-            )
-        )
+        os.symlink(symlink_target, symlink_source, target_is_directory)
 
     def walk(self, path: Path) -> Generator[Tuple[Path, str, str], None, None]:
         for p in path.iterdir():
