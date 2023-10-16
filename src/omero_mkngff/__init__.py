@@ -298,7 +298,6 @@ class MkngffControl(BaseControl):
             else:
                 is_array = (p / ".zarray").exists()
                 if is_array or (p / ".zgroup").exists():
-                    yield (p.parent, p.name, "Directory")
                     # If array, don't recursively check sub-dirs
                     if is_array:
                         yield (p, ".zarray", "application/octet-stream")
