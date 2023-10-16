@@ -25,9 +25,7 @@ from typing import Generator, Tuple
 
 import omero.all  # noqa
 from omero.cli import BaseControl, Parser
-from omero.gateway import BlitzGateway
 from omero.sys import ParametersI
-from omero.rtypes import rstring
 
 SUFFIX = "mkngff"
 HELP = """Plugin to swap OMERO filesets with NGFF
@@ -171,80 +169,6 @@ class MkngffControl(BaseControl):
         symlink.add_argument("symlink_target")
         symlink.set_defaults(func=self.symlink)
 
-        # fix 'clientpath' from 'unknown'
-        # templatePrefix: demo_2/Blitz-0-Ice.ThreadPool.Server-18/2018-11/26/10-44-37.527_mkngff/
-        # originalFile path: demo_2/Blitz-0-Ice.ThreadPool.Server-24/2018-11/26/10-39-10.551_mkngff/c49efcfd-e767-4ae5-adbf-299cafd92120.zarr/.zattrs
-        # clientpath: https://uk1s3.embassy.ebi.ac.uk/bia-integrator-data/S-BIAD815/c49efcfd-e767-4ae5-adbf-299cafd92120/c49efcfd-e767-4ae5-adbf-299cafd92120.zarr/
-        clientpath = sub.add_parser("clientpath", help="Fix clientpath")
-        clientpath.add_argument("target", help="E.g. Fileset:1, Project:2, Screen:3 etc")
-        clientpath.add_argument("url")
-        clientpath.set_defaults(func=self.clientpath)
-
-    def clientpath(self, args: Namespace) -> None:
-        client = self.ctx.conn(args)  # noqa
-        conn = BlitzGateway(client_obj=client)
-        for fileset in self.get_filesets(conn, args.target):
-            print("Fileset", fileset.id.val)
-            self.fix_clientpath(conn, fileset, args.url)
-
-    def fix_clientpath(self, conn, fileset, url):
-        prefix = fileset.templatePrefix.val
-        update = conn.getUpdateService()
-
-        tosave = []
-        for fse in fileset.copyUsedFiles():
-            orig = fse.originalFile
-            pathname = os.path.join(orig.path.val, orig.name.val)
-            if "zarr" not in pathname:
-                continue
-            zarrpath = pathname.replace(prefix, "")
-            zarrname = zarrpath.split(".zarr")[0]
-            cpath = os.path.join(url, zarrname, zarrpath)
-            fse.clientPath = rstring(cpath)
-            tosave.append(fse)
-
-        print("tosave", len(tosave))
-        if len(tosave) > 0:
-            update.saveArray(tosave)
-
-    def get_object(self, conn, obj_string):
-        for dtype in ["Screen", "Plate", "Project", "Dataset", "Image"]:
-            if obj_string.startswith(dtype):
-                obj_id = int(obj_string.replace(dtype + ":", ""))
-                obj = conn.getObject(dtype, obj_id)
-                if obj is None:
-                    print(obj_string, "not found!")
-                return obj
-
-    def get_filesets(self, conn, obj_string):
-        print("get_filesets", obj_string)
-        """obj_string is Image:123 or Fileset:123 or Plate:123"""
-        if obj_string.startswith("Fileset:"):
-            yield self.get_fileset(conn.c, int(obj_string.split(":")[1]))
-
-        obj = self.get_object(conn, obj_string)
-        if obj_string.startswith("Image:"):
-            yield self.get_fileset(conn.c, obj.fileset.id.val)
-        if obj_string.startswith("Plate:"):
-            yield self.get_fileset_from_plate(conn, obj)
-
-        if obj_string.startswith("Screen:"):
-            for plate in obj.listChildren():
-                yield self.get_fileset_from_plate(conn, plate)
-        if obj_string.startswith("Dataset:"):
-            for image in obj.listChildren():
-                yield self.get_fileset(conn.c, image.fileset.id.val)
-        if obj_string.startswith("Project:"):
-            for dataset in obj.listChildren():
-                for image in dataset.listChildren():
-                    yield self.get_fileset(conn.c, image.fileset.id.val)
-
-    def get_fileset_from_plate(self, conn, plate):
-        for well in plate.listChildren():
-            for ws in well.listChildren():
-                image = ws.getImage()
-                return self.get_fileset(conn.c, image.fileset.id.val)
-
     def setup(self, args: Namespace) -> None:
         self.ctx.out(SETUP)
 
@@ -310,29 +234,26 @@ class MkngffControl(BaseControl):
         self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
 
     def get_prefix(self, args):
-        client = self.ctx.conn(args)  # noqa
-        fs = self.get_fileset(client, args.fileset_id)
-        prefix = fs.templatePrefix.val
 
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]  # Drop ending "/"
-
-        return prefix
-
-    def get_fileset(self, client, fileset_id):
-        q = client.sf.getQueryService()
+        conn = self.ctx.conn(args)  # noqa
+        q = conn.sf.getQueryService()
         rv = q.findAllByQuery(
             (
                 "select f from Fileset f join fetch f.usedFiles fe "
                 "join fetch fe.originalFile ofile where f.id = :id"
             ),
-            ParametersI().addId(fileset_id),
+            ParametersI().addId(args.fileset_id),
         )
         if len(rv) != 1:
             self.ctx.die(400, f"Found wrong number of filesets: {len(rv)}")
             return
 
-        return rv[0]
+        prefix = rv[0].templatePrefix.val
+
+        if prefix.endswith("/"):
+            prefix = prefix[:-1]  # Drop ending "/"
+
+        return prefix
 
     def get_symlink_dir(self, symlink_repo, prefix, symlink_path):
         prefix_dir = os.path.join(symlink_repo, prefix)
