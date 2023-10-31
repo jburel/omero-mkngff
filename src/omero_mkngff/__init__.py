@@ -249,21 +249,19 @@ class MkngffControl(BaseControl):
 
         # Finally create *_SUFFIX/ directory containing symlink to data
         if args.symlink_repo:
-            self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+            self.create_symlink(args.symlink_repo, prefix, args.symlink_target)
             if args.bfoptions:
-                self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
+                self.write_bfoptions(args.symlink_repo, prefix, args.symlink_target)
 
     def bfoptions(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
-        symlink_path = Path(args.symlink_target)
-        self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
+        self.write_bfoptions(args.symlink_repo, prefix, args.symlink_target)
 
     def symlink(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
-        symlink_path = Path(args.symlink_target)
-        self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+        self.create_symlink(args.symlink_repo, prefix, args.symlink_target)
         if args.bfoptions:
-            self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
+            self.write_bfoptions(args.symlink_repo, prefix, args.symlink_target)
 
     def get_prefix(self, args):
 
@@ -290,21 +288,23 @@ class MkngffControl(BaseControl):
     def get_symlink_dir(self, symlink_repo, prefix):
         prefix_dir = os.path.join(symlink_repo, prefix)
         self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
-        # if not os.path.exists(prefix_dir):
-        #     self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
+        if not os.path.exists(prefix_dir):
+            self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
         symlink_dir = f"{prefix_dir}_{SUFFIX}"
         return symlink_dir
 
-    def write_bfoptions(self, managed_repo, fsprefix, file_path):
+    def write_bfoptions(self, managed_repo, fsprefix, symlink_target):
+        file_path = Path(symlink_target)
         mkngff_dir = self.get_symlink_dir(managed_repo, fsprefix)
         # os.makedirs(mkngff_dir, exist_ok=True)
         zarr_path = os.path.join(mkngff_dir, file_path.name)
         bfoptions_path = f"{zarr_path}.bfoptions"
-        print("WRITE bfoptions to", bfoptions_path)
-        # with open(bfoptions_path, "w") as f:
-        #     f.write("omezarr.list_pixels=false")
+        self.ctx.err("write bfoptions to: %s" % bfoptions_path)
+        with open(bfoptions_path, "w") as f:
+            f.write("omezarr.list_pixels=false")
 
-    def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
+    def create_symlink(self, symlink_repo, prefix, symlink_target):
+        symlink_path = Path(symlink_target)
         symlink_dir = self.get_symlink_dir(symlink_repo, prefix)
         self.ctx.err(f"Creating dir at {symlink_dir}")
         os.makedirs(symlink_dir, exist_ok=True)
