@@ -104,7 +104,7 @@ BEGIN
       insert into filesetentry
           (id, {DETAILS1}, fileset, originalfile, fileset_index, clientpath)
           values (nextval('seq_filesetentry'), {DETAILS2},
-                  new_fileset, new_file, i-1, 'unknown');
+                  new_fileset, new_file, i-1, info[i][4]);
 
     end loop;
 
@@ -134,7 +134,7 @@ begin;
 commit;
 """
 
-ROW = """          ['{PATH}', '{NAME}', '{MIME}']"""
+ROW = """          ['{PATH}', '{NAME}', '{MIME}', '{CLIENTPATH}']"""
 
 
 class MkngffControl(BaseControl):
@@ -154,6 +154,10 @@ class MkngffControl(BaseControl):
             "--symlink_repo",
             help=("Create symlinks from Fileset to symlink_target using"
                   "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository")
+        )
+        sql.add_argument(
+            "--clientpath",
+            help=("Base path to create clientpath/path/to/img.zarr/")
         )
         sql.add_argument("fileset_id", type=int)
         sql.add_argument("symlink_target")
@@ -193,6 +197,12 @@ class MkngffControl(BaseControl):
         # Need a file to set path/name on pixels table BioFormats uses for setId()
         setid_target = None
         for row_path, row_name, row_mime in self.walk(symlink_path):
+            row_clientpath = "unknown"
+            if args.clientpath:
+                # zarr_path is relative URL from .zarr /to/file/
+                zarr_path = str(row_path).replace(args.symlink_target, '')
+                row_clientpath = f"{args.clientpath}{zarr_path}/{row_name}"
+
             # remove common path to shorten
             row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
@@ -206,6 +216,7 @@ class MkngffControl(BaseControl):
                     PATH=f"{row_full_path}/",
                     NAME=row_name,
                     MIME=row_mime,
+                    CLIENTPATH=row_clientpath,
                 )
             )
 
@@ -287,7 +298,6 @@ class MkngffControl(BaseControl):
             else:
                 is_array = (p / ".zarray").exists()
                 if is_array or (p / ".zgroup").exists():
-                    yield (p.parent, p.name, "Directory")
                     # If array, don't recursively check sub-dirs
                     if is_array:
                         yield (p, ".zarray", "application/octet-stream")
