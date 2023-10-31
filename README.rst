@@ -25,15 +25,21 @@ specified Fileset ID:
 
 ::
 
-    $ omero mkngff sql --symlink_repo /OMERO/ManagedRepository --secret=secret 1234 /path/to/fileset.zarr > myNgff.sql
+    $ omero mkngff sql --symlink_repo /OMERO/ManagedRepository --secret=secret --bfoptions 1234 /path/to/fileset.zarr > myNgff.sql
     $ psql -U omero -d idr -h $DBHOST -f myNgff.sql
 
-To ONLY perform the symlink creation:
+To ONLY perform the symlink creation (and optionally create fileset.zarr.bfoptions)
 
 ::
 
-    $ omero mkngff symlink /OMERO/ManagedRepository 1234 /path/to/fileset.zarr
+    $ omero mkngff symlink /OMERO/ManagedRepository 1234 /path/to/fileset.zarr --bfoptions
 
+
+To ONLY create fileset.zarr.bfoptions
+
+::
+
+    $ omero mkngff bfoptions /OMERO/ManagedRepository 1234 /path/to/fileset.zarr
 
 Requirements
 ============

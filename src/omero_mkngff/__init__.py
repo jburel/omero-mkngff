@@ -156,6 +156,10 @@ class MkngffControl(BaseControl):
                   "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository")
         )
         sql.add_argument(
+            "--bfoptions", action="store_true",
+            help=("Create data.zarr.bfoptions file if --symlink_repo has been provided")
+        )
+        sql.add_argument(
             "--clientpath",
             help=("Base path to create clientpath/path/to/img.zarr/")
         )
@@ -171,7 +175,15 @@ class MkngffControl(BaseControl):
             "this ManagedRepo path, e.g. /data/OMERO/ManagedRepository"))
         symlink.add_argument("fileset_id", type=int)
         symlink.add_argument("symlink_target")
+        symlink.add_argument("--bfoptions", action="store_true", help="Create data.zarr.bfoptions file")
         symlink.set_defaults(func=self.symlink)
+
+        bfoptions = sub.add_parser("bfoptions", help="Create data.zarr.bfoptions in Fileset")
+        bfoptions.add_argument("symlink_repo", help=(
+            "The ManagedRepo path, e.g. /data/OMERO/ManagedRepository"))
+        bfoptions.add_argument("fileset_id", type=int)
+        bfoptions.add_argument("symlink_target")
+        bfoptions.set_defaults(func=self.bfoptions)
 
     def setup(self, args: Namespace) -> None:
         self.ctx.out(SETUP)
@@ -188,7 +200,7 @@ class MkngffControl(BaseControl):
 
         # If symlink dir exists, we assume that this fileset has been processed -> skip...
         if args.symlink_repo:
-            symlink_dir = self.get_symlink_dir(args.symlink_repo, prefix, symlink_path)
+            symlink_dir = self.get_symlink_dir(args.symlink_repo, prefix)
             if os.path.exists(symlink_dir):
                 self.ctx.err(f"Symlink dir exists at {symlink_dir} - skipping sql output")
                 return
@@ -238,11 +250,20 @@ class MkngffControl(BaseControl):
         # Finally create *_SUFFIX/ directory containing symlink to data
         if args.symlink_repo:
             self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+            if args.bfoptions:
+                self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
+
+    def bfoptions(self, args: Namespace) -> None:
+        prefix = self.get_prefix(args)
+        symlink_path = Path(args.symlink_target)
+        self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
 
     def symlink(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
         symlink_path = Path(args.symlink_target)
         self.create_symlink(args.symlink_repo, prefix, symlink_path, args.symlink_target)
+        if args.bfoptions:
+            self.write_bfoptions(args.symlink_repo, prefix, symlink_path)
 
     def get_prefix(self, args):
 
@@ -266,19 +287,25 @@ class MkngffControl(BaseControl):
 
         return prefix
 
-    def get_symlink_dir(self, symlink_repo, prefix, symlink_path):
+    def get_symlink_dir(self, symlink_repo, prefix):
         prefix_dir = os.path.join(symlink_repo, prefix)
         self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
-        if not os.path.exists(prefix_dir):
-            self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
-        symlink_container = f"{symlink_path.parent}"
-        if symlink_container.startswith("/"):
-            symlink_container = symlink_container[1:]  # remove "/" from start
+        # if not os.path.exists(prefix_dir):
+        #     self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
         symlink_dir = f"{prefix_dir}_{SUFFIX}"
         return symlink_dir
 
+    def write_bfoptions(self, managed_repo, fsprefix, file_path):
+        mkngff_dir = self.get_symlink_dir(managed_repo, fsprefix)
+        # os.makedirs(mkngff_dir, exist_ok=True)
+        zarr_path = os.path.join(mkngff_dir, file_path.name)
+        bfoptions_path = f"{zarr_path}.bfoptions"
+        print("WRITE bfoptions to", bfoptions_path)
+        # with open(bfoptions_path, "w") as f:
+        #     f.write("omezarr.list_pixels=false")
+
     def create_symlink(self, symlink_repo, prefix, symlink_path, symlink_target):
-        symlink_dir = self.get_symlink_dir(symlink_repo, prefix, symlink_path)
+        symlink_dir = self.get_symlink_dir(symlink_repo, prefix)
         self.ctx.err(f"Creating dir at {symlink_dir}")
         os.makedirs(symlink_dir, exist_ok=True)
 
