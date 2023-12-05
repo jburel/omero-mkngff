@@ -301,8 +301,8 @@ class MkngffControl(BaseControl):
         bfoptions_path = f"{zarr_path}.bfoptions"
         self.ctx.err("write bfoptions to: %s" % bfoptions_path)
         with open(bfoptions_path, "w") as f:
-            f.write("omezarr.list_pixels=false")
-            f.write("omezarr.quick_read=true")
+            f.writelines(["omezarr.list_pixels=false",
+                          "omezarr.quick_read=true"])
 
     def create_symlink(self, symlink_repo, prefix, symlink_target):
         symlink_path = Path(symlink_target)
