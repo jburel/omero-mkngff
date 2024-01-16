@@ -27,7 +27,6 @@ import omero.all  # noqa
 from omero.cli import BaseControl, Parser
 from omero.sys import ParametersI
 
-SUFFIX = "mkngff"
 HELP = """Plugin to swap OMERO filesets with NGFF
 
 CLI plugin used to swap an existing OMERO fileset with
@@ -44,6 +43,9 @@ Examples:
     omero mkngff sql ${fileset} ${zarrdir} --zarr_name "nice.ome.zarr"
 
 """
+FS_SUFFIX_HELP = ("New Fileset.templatePrefix will be old Fileset.templatePrefix + fs_suffix. "
+                  "Default is to use _mkngff. "
+                  "Use 'None' to specify an empty string (new templatePrefix is same as old).")
 
 SETUP = """
 
@@ -138,6 +140,8 @@ ROW = """          ['{PATH}', '{NAME}', '{MIME}', '{CLIENTPATH}']"""
 
 
 class MkngffControl(BaseControl):
+    suffix = "_mkngff"
+
     def _configure(self, parser: Parser) -> None:
         parser.add_login_arguments()
         sub = parser.add_subparsers()
@@ -163,6 +167,7 @@ class MkngffControl(BaseControl):
             "--clientpath",
             help=("Base path to create clientpath/path/to/img.zarr/")
         )
+        sql.add_argument("--fs_suffix", default="_mkngff", help=FS_SUFFIX_HELP)
         sql.add_argument("fileset_id", type=int)
         sql.add_argument("symlink_target")
         sql.set_defaults(func=self.sql)
@@ -176,6 +181,7 @@ class MkngffControl(BaseControl):
         symlink.add_argument("fileset_id", type=int)
         symlink.add_argument("symlink_target")
         symlink.add_argument("--bfoptions", action="store_true", help="Create data.zarr.bfoptions file")
+        symlink.add_argument("--fs_suffix", default="_mkngff", help=FS_SUFFIX_HELP)
         symlink.set_defaults(func=self.symlink)
 
         bfoptions = sub.add_parser("bfoptions", help="Create data.zarr.bfoptions in Fileset")
@@ -183,6 +189,7 @@ class MkngffControl(BaseControl):
             "The ManagedRepo path, e.g. /data/OMERO/ManagedRepository"))
         bfoptions.add_argument("fileset_id", type=int)
         bfoptions.add_argument("symlink_target")
+        bfoptions.add_argument("--fs_suffix", default="_mkngff", help=FS_SUFFIX_HELP)
         bfoptions.set_defaults(func=self.bfoptions)
 
     def setup(self, args: Namespace) -> None:
@@ -190,6 +197,8 @@ class MkngffControl(BaseControl):
 
     def sql(self, args: Namespace) -> None:
         prefix = self.get_prefix(args)
+        self.suffix = "" if args.fs_suffix == "None" else args.fs_suffix
+
         self.ctx.err(f"Found prefix: {prefix} for fileset: {args.fileset_id}")
 
         symlink_path = Path(args.symlink_target)
@@ -219,7 +228,7 @@ class MkngffControl(BaseControl):
             row_path = str(row_path).replace(f"{symlink_path.parent}", "")
             if str(row_path).startswith("/"):
                 row_path = str(row_path)[1:]  # remove "/" from start
-            row_full_path = f"{prefix}_{SUFFIX}/{row_path}"
+            row_full_path = f"{prefix}{self.suffix}/{row_path}"
             # pick the first .zattrs file we find, then update to ome.xml if we find it
             if setid_target is None and row_name == ".zattrs" or row_name == "METADATA.ome.xml":
                 setid_target = [row_full_path, row_name]
@@ -240,24 +249,26 @@ class MkngffControl(BaseControl):
         self.ctx.out(
             TEMPLATE.format(
                 OLD_FILESET=args.fileset_id,
-                PREFIX=f"{prefix}_{SUFFIX}/",
+                PREFIX=f"{prefix}{self.suffix}/",
                 ROWS=",\n".join(rows),
                 REPO=self.get_uuid(args),
                 UUID=args.secret,
             )
         )
 
-        # Finally create *_SUFFIX/ directory containing symlink to data
+        # Finally create *self.suffix/ directory containing symlink to data
         if args.symlink_repo:
             self.create_symlink(args.symlink_repo, prefix, args.symlink_target)
             if args.bfoptions:
                 self.write_bfoptions(args.symlink_repo, prefix, args.symlink_target)
 
     def bfoptions(self, args: Namespace) -> None:
+        self.suffix = "" if args.fs_suffix == "None" else args.fs_suffix
         prefix = self.get_prefix(args)
         self.write_bfoptions(args.symlink_repo, prefix, args.symlink_target)
 
     def symlink(self, args: Namespace) -> None:
+        self.suffix = "" if args.fs_suffix == "None" else args.fs_suffix
         prefix = self.get_prefix(args)
         self.create_symlink(args.symlink_repo, prefix, args.symlink_target)
         if args.bfoptions:
@@ -290,7 +301,7 @@ class MkngffControl(BaseControl):
         self.ctx.err(f"Checking for prefix_dir {prefix_dir}")
         if not os.path.exists(prefix_dir):
             self.ctx.die(402, f"Fileset dir does not exist: {prefix_dir}")
-        symlink_dir = f"{prefix_dir}_{SUFFIX}"
+        symlink_dir = f"{prefix_dir}{self.suffix}"
         return symlink_dir
 
     def write_bfoptions(self, managed_repo, fsprefix, symlink_target):
