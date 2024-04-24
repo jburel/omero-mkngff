@@ -30,7 +30,7 @@ def read(fname):
 
 
 version = "0.1.0.dev0"
-url = "https://github.com/ome/omero-mkngff"
+url = "https://github.com/IDR/omero-mkngff"
 
 setup(
     version=version,
