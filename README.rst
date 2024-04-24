@@ -1,11 +1,10 @@
 .. image:: https://github.com/IDR/omero-mkngff/workflows/OMERO/badge.svg
     :target: https://github.com/IDR/omero-mkngff
-
 .. image:: https://badge.fury.io/py/omero-mkngff.svg
     :target: https://badge.fury.io/py/omero-mkngff
 
 omero-mkngff
-==================================
+============
 
 Plugin to swap OMERO filesets with NGFF
 
