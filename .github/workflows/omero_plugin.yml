@@ -31,4 +31,4 @@ jobs:
           path: .omero
           ref: ${{ secrets.OMERO_TEST_INFRA_REF }}
       - name: Build and run OMERO tests
-        run: .omero/docker $STAGE
+        run: PLUGIN=mkngff .omero/docker $STAGE
